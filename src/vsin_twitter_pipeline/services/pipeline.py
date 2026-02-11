@@ -27,6 +27,8 @@ class PipelineService:
         publish_mode: str,
         schedule_iso8601: Optional[str],
         enable_thread_generation: bool,
+        min_insights_for_thread: int,
+        min_chars_for_thread: int,
         dry_run: bool,
     ):
         self.rss_client = rss_client
@@ -39,6 +41,8 @@ class PipelineService:
         self.publish_mode = publish_mode
         self.schedule_iso8601 = schedule_iso8601
         self.enable_thread_generation = enable_thread_generation
+        self.min_insights_for_thread = min_insights_for_thread
+        self.min_chars_for_thread = min_chars_for_thread
         self.dry_run = dry_run
 
     def run_once(self) -> dict:
@@ -78,7 +82,8 @@ class PipelineService:
                         extracted_insights=insights,
                     )
 
-                    tweets = self.openai_client.generate_tweets(article, self.enable_thread_generation)
+                    allow_thread = self._allow_thread_for_article(clean_text, insights)
+                    tweets = self.openai_client.generate_tweets(article, allow_thread)
 
                     if self.dry_run:
                         logger.info(
@@ -172,3 +177,10 @@ class PipelineService:
         article_text = self.extractor.fetch_article_text(url, rss_content=feed_content)
         clean_text = self.cleaner.clean(article_text)
         return clean_text
+
+    def _allow_thread_for_article(self, clean_text: str, insights: list[str]) -> bool:
+        if not self.enable_thread_generation:
+            return False
+
+        # Single-tweet mode is default. Threads are only enabled for deep, data-rich articles.
+        return len(insights) >= self.min_insights_for_thread and len(clean_text) >= self.min_chars_for_thread

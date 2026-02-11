@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     typefully_schedule_iso8601: Optional[str] = Field(default=None, alias="TYPEFULLY_SCHEDULE_ISO8601")
 
     enable_thread_generation: bool = Field(default=True, alias="ENABLE_THREAD_GENERATION")
+    min_insights_for_thread: int = Field(default=8, alias="MIN_INSIGHTS_FOR_THREAD")
+    min_chars_for_thread: int = Field(default=2800, alias="MIN_CHARS_FOR_THREAD")
     dry_run: bool = Field(default=False, alias="DRY_RUN")
 
 

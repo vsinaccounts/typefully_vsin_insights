@@ -47,6 +47,8 @@ def build_pipeline() -> PipelineService:
         publish_mode=settings.typefully_publish_mode,
         schedule_iso8601=settings.typefully_schedule_iso8601,
         enable_thread_generation=settings.enable_thread_generation,
+        min_insights_for_thread=settings.min_insights_for_thread,
+        min_chars_for_thread=settings.min_chars_for_thread,
         dry_run=settings.dry_run,
     )
 

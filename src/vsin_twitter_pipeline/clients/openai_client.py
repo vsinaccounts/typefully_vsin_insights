@@ -82,7 +82,9 @@ Generation goals:
 - Emphasize actionable framing: market mispricing, trend context, or risk-adjusted takeaway.
 - If data is weak, use restraint and be explicit about uncertainty.
 - Choose exactly one output path: single tweet OR 3-tweet thread (never both).
+- Default preference: single quick-hitter tweet with one sharp, high-value takeaway.
 - Thread allowed: {str(enable_thread_generation).lower()} (only return thread mode when article has sufficient depth).
+- Only choose thread mode when the article has enough depth for 3 distinct, non-redundant betting insights.
 - If thread mode is chosen, tweet 1 must be a hard hook, tweet 2 expands evidence, tweet 3 lands the actionable betting takeaway.
 """.strip()
 

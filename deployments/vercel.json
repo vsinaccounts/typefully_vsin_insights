@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "api/pipeline.py": {
+      "runtime": "python3.11"
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/pipeline",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+from vsin_twitter_pipeline.orchestration.vercel_entry import handler

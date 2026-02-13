@@ -218,4 +218,13 @@ class PipelineService:
                 scheduled = now_utc
 
         self._publish_cursor = scheduled
-        return scheduled.isoformat().replace("+00:00", "Z")
+        scheduled_iso = scheduled.isoformat().replace("+00:00", "Z")
+        logger.info(
+            f"resolved scheduled publish time: {scheduled_iso}",
+            extra={
+                "event": "schedule_resolved",
+                "status": "ok",
+                "stage": "typefully_schedule",
+            },
+        )
+        return scheduled_iso

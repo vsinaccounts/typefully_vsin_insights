@@ -51,18 +51,30 @@ class TypefullyClient:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        with httpx.Client(timeout=self.timeout_seconds) as client:
-            response = client.get(url, headers=headers)
-            response.raise_for_status()
-            body = response.json()
+        bodies: list[dict] = []
+        with httpx.Client(timeout=self.timeout_seconds, follow_redirects=True) as client:
+            current_url: Optional[str] = url
+            page_count = 0
+            while current_url and page_count < 10:
+                response = client.get(current_url, headers=headers)
+                response.raise_for_status()
+                body = response.json()
+                if isinstance(body, dict):
+                    bodies.append(body)
+                current_url = body.get("next") if isinstance(body, dict) else None
+                page_count += 1
 
+        now_utc = datetime.now(timezone.utc)
         latest: Optional[datetime] = None
-        for value in self._extract_possible_schedule_values(body):
-            dt = self._parse_dt(value)
-            if not dt:
-                continue
-            if latest is None or dt > latest:
-                latest = dt
+        for body in bodies:
+            for value in self._extract_possible_schedule_values(body):
+                dt = self._parse_dt(value)
+                if not dt:
+                    continue
+                if dt < now_utc:
+                    continue
+                if latest is None or dt > latest:
+                    latest = dt
         return latest
 
     def _build_payload(self, posts: list[str], mode: str, schedule_at: Optional[str]) -> dict:
@@ -103,6 +115,8 @@ class TypefullyClient:
             "publishAt",
             "scheduled_at",
             "scheduledAt",
+            "scheduled_date",
+            "scheduledDate",
             "schedule-date",
             "scheduleDate",
         }

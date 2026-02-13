@@ -1,10 +1,10 @@
 import json
 from datetime import datetime, timezone
+from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from vsin_twitter_pipeline.models.db import Database, PipelineRun, ProcessedArticle, TweetDraft
-from typing import Optional
 
 
 class Repository:
@@ -34,6 +34,12 @@ class Repository:
                 )
             )
             session.commit()
+
+    def get_last_draft_created_at(self) -> Optional[datetime]:
+        with self.db.SessionLocal() as session:
+            stmt = select(func.max(TweetDraft.created_at))
+            value = session.execute(stmt).scalar_one_or_none()
+            return value
 
     def create_run(self, run_id: str) -> int:
         with self.db.SessionLocal() as session:

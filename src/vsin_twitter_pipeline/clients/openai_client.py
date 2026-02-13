@@ -78,11 +78,16 @@ EXTRACTED DATA POINTS:
 {key_points if key_points else "- none extracted"}
 
 Generation goals:
-- Build tweets around the strongest betting angle, not broad recap.
+- Default to ONE singular tweet.
+- Treat thread output as rare and only use it when absolutely necessary for clarity.
+- Do NOT summarize the full article slate.
+- Do NOT cover multiple games just because the article includes them.
+- Do NOT bundle multiple betting angles in one post.
+- Pick the single strongest, most actionable betting edge and write around that one idea.
+- Keep scope narrow: one game OR one matchup OR one betting angle.
 - Emphasize actionable framing: market mispricing, trend context, or risk-adjusted takeaway.
 - If data is weak, use restraint and be explicit about uncertainty.
 - Choose exactly one output path: single tweet OR 3-tweet thread (never both).
-- Default preference: single quick-hitter tweet with one sharp, high-value takeaway.
 - Thread allowed: {str(enable_thread_generation).lower()} (only return thread mode when article has sufficient depth).
 - Only choose thread mode when the article has enough depth for 3 distinct, non-redundant betting insights.
 - If thread mode is chosen, tweet 1 must be a hard hook, tweet 2 expands evidence, tweet 3 lands the actionable betting takeaway.

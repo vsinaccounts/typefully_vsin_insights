@@ -49,6 +49,7 @@ def build_pipeline() -> PipelineService:
         enable_thread_generation=settings.enable_thread_generation,
         min_insights_for_thread=settings.min_insights_for_thread,
         min_chars_for_thread=settings.min_chars_for_thread,
+        min_autopublish_spacing_minutes=settings.min_autopublish_spacing_minutes,
         dry_run=settings.dry_run,
     )
 

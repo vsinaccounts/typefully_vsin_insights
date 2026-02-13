@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from datetime import timedelta
 import uuid
 
 from vsin_twitter_pipeline.clients.openai_client import OpenAIClient
@@ -29,6 +30,7 @@ class PipelineService:
         enable_thread_generation: bool,
         min_insights_for_thread: int,
         min_chars_for_thread: int,
+        min_autopublish_spacing_minutes: int,
         dry_run: bool,
     ):
         self.rss_client = rss_client
@@ -43,7 +45,9 @@ class PipelineService:
         self.enable_thread_generation = enable_thread_generation
         self.min_insights_for_thread = min_insights_for_thread
         self.min_chars_for_thread = min_chars_for_thread
+        self.min_autopublish_spacing_minutes = min_autopublish_spacing_minutes
         self.dry_run = dry_run
+        self._publish_cursor: Optional[datetime] = None
 
     def run_once(self) -> dict:
         run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:8]}"
@@ -56,6 +60,8 @@ class PipelineService:
         logger.info("pipeline started", extra={"event": "pipeline_start", "run_id": run_id})
 
         try:
+            if self.publish_mode == "schedule" and not self.schedule_iso8601:
+                self._publish_cursor = self.repository.get_last_draft_created_at()
             entries = self.rss_client.fetch_entries()
             for entry in entries[: self.max_articles_per_run]:
                 found += 1
@@ -91,17 +97,20 @@ class PipelineService:
                             extra={"event": "typefully_skip", "article_id": article_id, "run_id": run_id},
                         )
                     else:
+                        effective_mode = self.publish_mode
+                        effective_schedule = self._resolve_schedule_for_next_post()
+
                         if tweets.delivery_mode == "thread":
                             thread_draft = self.typefully_client.create_thread(
                                 tweets=tweets.thread,
-                                mode=self.publish_mode,
-                                schedule_at=self.schedule_iso8601,
+                                mode=effective_mode,
+                                schedule_at=effective_schedule,
                             )
                             self.repository.record_draft(
                                 article_id=article_id,
                                 draft_type="thread",
                                 payload={"thread": tweets.thread},
-                                publish_mode=self.publish_mode,
+                                publish_mode=effective_mode,
                                 status=thread_draft.status,
                                 remote_id=thread_draft.remote_id,
                             )
@@ -109,14 +118,14 @@ class PipelineService:
                             single_payload = {"single_tweet": tweets.single_tweet}
                             single_draft = self.typefully_client.create_single(
                                 content=tweets.single_tweet,
-                                mode=self.publish_mode,
-                                schedule_at=self.schedule_iso8601,
+                                mode=effective_mode,
+                                schedule_at=effective_schedule,
                             )
                             self.repository.record_draft(
                                 article_id=article_id,
                                 draft_type="single",
                                 payload=single_payload,
-                                publish_mode=self.publish_mode,
+                                publish_mode=effective_mode,
                                 status=single_draft.status,
                                 remote_id=single_draft.remote_id,
                             )
@@ -184,3 +193,24 @@ class PipelineService:
 
         # Single-tweet mode is default. Threads are only enabled for deep, data-rich articles.
         return len(insights) >= self.min_insights_for_thread and len(clean_text) >= self.min_chars_for_thread
+
+    def _resolve_schedule_for_next_post(self) -> Optional[str]:
+        if self.publish_mode != "schedule":
+            return self.schedule_iso8601
+
+        if self.schedule_iso8601:
+            return self.schedule_iso8601
+
+        now_utc = datetime.now(timezone.utc)
+        if self._publish_cursor and self._publish_cursor.tzinfo is None:
+            self._publish_cursor = self._publish_cursor.replace(tzinfo=timezone.utc)
+
+        if not self._publish_cursor:
+            scheduled = now_utc
+        else:
+            scheduled = self._publish_cursor + timedelta(minutes=self.min_autopublish_spacing_minutes)
+            if scheduled < now_utc:
+                scheduled = now_utc
+
+        self._publish_cursor = scheduled
+        return scheduled.isoformat().replace("+00:00", "Z")

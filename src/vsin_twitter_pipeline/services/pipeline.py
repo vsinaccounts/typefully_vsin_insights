@@ -61,7 +61,7 @@ class PipelineService:
 
         try:
             if self.publish_mode == "schedule" and not self.schedule_iso8601:
-                self._publish_cursor = self.repository.get_last_draft_created_at()
+                self._publish_cursor = self.typefully_client.get_latest_scheduled_publish_at()
             entries = self.rss_client.fetch_entries()
             for entry in entries[: self.max_articles_per_run]:
                 found += 1
@@ -200,6 +200,11 @@ class PipelineService:
 
         if self.schedule_iso8601:
             return self.schedule_iso8601
+
+        # Always audit Typefully queue before assigning the next scheduled time.
+        latest_remote = self.typefully_client.get_latest_scheduled_publish_at()
+        if latest_remote and (not self._publish_cursor or latest_remote > self._publish_cursor):
+            self._publish_cursor = latest_remote
 
         now_utc = datetime.now(timezone.utc)
         if self._publish_cursor and self._publish_cursor.tzinfo is None:

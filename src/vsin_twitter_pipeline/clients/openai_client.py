@@ -1,4 +1,5 @@
 import json
+import re
 
 from openai import OpenAI
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -15,6 +16,9 @@ Voice requirements:
 - Avoid emojis unless context demands one (rare).
 - Never fabricate data, odds, injuries, or trends.
 - Do not include URLs.
+- Do not write promotional or marketing copy.
+- Do not include calls to action such as "check out", "read", "watch", "follow", or "subscribe".
+- Focus only on actionable insights, statistics, and betting tips.
 
 Output requirements:
 - Return valid JSON only with keys: delivery_mode, single_tweet, thread
@@ -31,6 +35,7 @@ You are a strict factual verifier for VSiN social copy.
 Rules:
 - Do not introduce any new names, stats, records, locations, or qualifiers not supported by the source.
 - If a claim is ambiguous or unsupported, remove it.
+- Remove promotional language and calls to action.
 - Preserve clarity and impact, but prefer omission over invention.
 - Return valid JSON only with keys: delivery_mode, single_tweet, thread.
 - Keep all character limits intact (<=280 per tweet).
@@ -74,6 +79,8 @@ class OpenAIClient:
         )
         self._validate(tweet_package, enable_thread_generation)
         verified = self._fact_check_and_rewrite(article, tweet_package, enable_thread_generation)
+        if self._contains_promotional_language(verified):
+            verified = self._remove_promotional_language(article, verified, enable_thread_generation)
         self._validate(verified, enable_thread_generation)
         return verified
 
@@ -98,6 +105,7 @@ Generation goals:
 - Do NOT bundle multiple betting angles in one post.
 - Pick the single strongest, most actionable betting edge and write around that one idea.
 - Keep scope narrow: one game OR one matchup OR one betting angle.
+- No promotional framing. No "check out/read/watch/follow/subscribe" phrasing.
 - Emphasize actionable framing: market mispricing, trend context, or risk-adjusted takeaway.
 - If data is weak, use restraint and be explicit about uncertainty.
 - Choose exactly one output path: single tweet OR 3-tweet thread (never both).
@@ -168,6 +176,62 @@ Task:
             ],
         )
 
+        content = response.choices[0].message.content or "{}"
+        payload = json.loads(content)
+        return TweetPackage(
+            delivery_mode=str(payload.get("delivery_mode", "")).strip().lower(),
+            single_tweet=str(payload.get("single_tweet", "")).strip(),
+            thread=[str(x).strip() for x in payload.get("thread", []) if str(x).strip()],
+        )
+
+    @staticmethod
+    def _contains_promotional_language(draft: TweetPackage) -> bool:
+        combined = " ".join([draft.single_tweet] + draft.thread).lower()
+        patterns = [
+            r"\bcheck out\b",
+            r"\bread\b",
+            r"\bwatch\b",
+            r"\bfollow\b",
+            r"\bsubscribe\b",
+            r"\bvisit\b",
+            r"\bpreviews?\b",
+            r"\bpromo\b",
+            r"\bexclusive\b",
+        ]
+        return any(re.search(p, combined) for p in patterns)
+
+    def _remove_promotional_language(
+        self, article: Article, draft: TweetPackage, enable_thread_generation: bool
+    ) -> TweetPackage:
+        draft_json = {
+            "delivery_mode": draft.delivery_mode,
+            "single_tweet": draft.single_tweet,
+            "thread": draft.thread,
+        }
+        prompt = f"""
+SOURCE ARTICLE TEXT:
+{article.clean_text[:14000]}
+
+DRAFT OUTPUT JSON:
+{json.dumps(draft_json, ensure_ascii=True)}
+
+Task:
+- Rewrite to remove any promotional wording or call to action.
+- Keep only insight, stat, and betting-tip value.
+- Keep JSON schema and character limits.
+- Thread allowed: {str(enable_thread_generation).lower()}.
+""".strip()
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            temperature=0,
+            max_tokens=self.max_output_tokens,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": FACT_CHECK_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+        )
         content = response.choices[0].message.content or "{}"
         payload = json.loads(content)
         return TweetPackage(

@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     min_autopublish_spacing_minutes: int = Field(default=30, alias="MIN_AUTOPUBLISH_SPACING_MINUTES")
 
     enable_thread_generation: bool = Field(default=True, alias="ENABLE_THREAD_GENERATION")
-    min_insights_for_thread: int = Field(default=12, alias="MIN_INSIGHTS_FOR_THREAD")
-    min_chars_for_thread: int = Field(default=4500, alias="MIN_CHARS_FOR_THREAD")
+    min_insights_for_thread: int = Field(default=18, alias="MIN_INSIGHTS_FOR_THREAD")
+    min_chars_for_thread: int = Field(default=7000, alias="MIN_CHARS_FOR_THREAD")
     dry_run: bool = Field(default=False, alias="DRY_RUN")
 
 

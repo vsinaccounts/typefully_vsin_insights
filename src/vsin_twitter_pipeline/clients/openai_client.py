@@ -25,6 +25,17 @@ Output requirements:
 - Tweets must be standalone and insight-first, not article recaps.
 """.strip()
 
+FACT_CHECK_PROMPT = """
+You are a strict factual verifier for VSiN social copy.
+
+Rules:
+- Do not introduce any new names, stats, records, locations, or qualifiers not supported by the source.
+- If a claim is ambiguous or unsupported, remove it.
+- Preserve clarity and impact, but prefer omission over invention.
+- Return valid JSON only with keys: delivery_mode, single_tweet, thread.
+- Keep all character limits intact (<=280 per tweet).
+""".strip()
+
 
 class OpenAIClient:
     def __init__(self, api_key: str, model: str, temperature: float, max_output_tokens: int):
@@ -62,7 +73,9 @@ class OpenAIClient:
             thread=[str(x).strip() for x in payload.get("thread", []) if str(x).strip()],
         )
         self._validate(tweet_package, enable_thread_generation)
-        return tweet_package
+        verified = self._fact_check_and_rewrite(article, tweet_package, enable_thread_generation)
+        self._validate(verified, enable_thread_generation)
+        return verified
 
     def _build_user_prompt(self, article: Article, enable_thread_generation: bool) -> str:
         key_points = "\n".join(f"- {point}" for point in article.extracted_insights[:12])
@@ -116,3 +129,49 @@ Generation goals:
         for idx, tweet in enumerate(tweet_package.thread, start=1):
             if len(tweet) > 280:
                 raise ValueError(f"thread tweet {idx} exceeds 280 characters")
+
+    def _fact_check_and_rewrite(
+        self, article: Article, draft: TweetPackage, enable_thread_generation: bool
+    ) -> TweetPackage:
+        draft_json = {
+            "delivery_mode": draft.delivery_mode,
+            "single_tweet": draft.single_tweet,
+            "thread": draft.thread,
+        }
+        key_points = "\n".join(f"- {point}" for point in article.extracted_insights[:20])
+        prompt = f"""
+SOURCE ARTICLE TEXT:
+{article.clean_text[:14000]}
+
+SOURCE DATA POINTS:
+{key_points if key_points else "- none extracted"}
+
+DRAFT OUTPUT JSON:
+{json.dumps(draft_json, ensure_ascii=True)}
+
+Task:
+- Verify every claim against SOURCE ARTICLE TEXT.
+- Correct any factual drift, attribution drift, or scope drift.
+- Keep tone sharp and concise while staying source-grounded.
+- Keep same JSON schema.
+- Thread allowed: {str(enable_thread_generation).lower()}.
+""".strip()
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            temperature=0,
+            max_tokens=self.max_output_tokens,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": FACT_CHECK_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+        )
+
+        content = response.choices[0].message.content or "{}"
+        payload = json.loads(content)
+        return TweetPackage(
+            delivery_mode=str(payload.get("delivery_mode", "")).strip().lower(),
+            single_tweet=str(payload.get("single_tweet", "")).strip(),
+            thread=[str(x).strip() for x in payload.get("thread", []) if str(x).strip()],
+        )

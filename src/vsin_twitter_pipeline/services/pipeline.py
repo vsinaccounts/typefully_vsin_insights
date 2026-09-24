@@ -121,27 +121,38 @@ class PipelineService:
                         effective_mode = self.publish_mode
                         effective_schedule = self._resolve_schedule_for_next_post()
 
+                        reply = self._read_more_reply(entry.get("url"))
                         if tweets.delivery_mode == "thread":
+                            posts = list(tweets.thread)
+                            if reply:
+                                posts.append(reply)
                             thread_draft = self.typefully_client.create_thread(
-                                tweets=tweets.thread,
+                                tweets=posts,
                                 mode=effective_mode,
                                 schedule_at=effective_schedule,
                             )
                             self.repository.record_draft(
                                 article_id=article_id,
                                 draft_type="thread",
-                                payload={"thread": tweets.thread},
+                                payload={"thread": tweets.thread, "reply": reply},
                                 publish_mode=effective_mode,
                                 status=thread_draft.status,
                                 remote_id=thread_draft.remote_id,
                             )
                         else:
-                            single_payload = {"single_tweet": tweets.single_tweet}
-                            single_draft = self.typefully_client.create_single(
-                                content=tweets.single_tweet,
-                                mode=effective_mode,
-                                schedule_at=effective_schedule,
-                            )
+                            single_payload = {"single_tweet": tweets.single_tweet, "reply": reply}
+                            if reply:
+                                single_draft = self.typefully_client.create_thread(
+                                    tweets=[tweets.single_tweet, reply],
+                                    mode=effective_mode,
+                                    schedule_at=effective_schedule,
+                                )
+                            else:
+                                single_draft = self.typefully_client.create_single(
+                                    content=tweets.single_tweet,
+                                    mode=effective_mode,
+                                    schedule_at=effective_schedule,
+                                )
                             self.repository.record_draft(
                                 article_id=article_id,
                                 draft_type="single",
@@ -211,6 +222,12 @@ class PipelineService:
     @staticmethod
     def _normalize_author_names(names: list[str]) -> list[str]:
         return [re.sub(r"\s+", " ", name).strip().casefold() for name in names if name and name.strip()]
+
+    @staticmethod
+    def _read_more_reply(url: Optional[str]) -> Optional[str]:
+        if not url or not str(url).strip():
+            return None
+        return f"Read more: {str(url).strip()}"
 
     def _author_is_excluded(self, author: Optional[str]) -> bool:
         if not author or not self.excluded_authors:

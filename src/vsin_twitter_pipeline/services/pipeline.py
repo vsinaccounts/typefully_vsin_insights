@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from datetime import timedelta
+import re
 import uuid
 
 from vsin_twitter_pipeline.clients.openai_client import OpenAIClient
@@ -32,6 +33,7 @@ class PipelineService:
         min_chars_for_thread: int,
         min_autopublish_spacing_minutes: int,
         dry_run: bool,
+        excluded_authors: Optional[list[str]] = None,
     ):
         self.rss_client = rss_client
         self.extractor = extractor
@@ -47,6 +49,7 @@ class PipelineService:
         self.min_chars_for_thread = min_chars_for_thread
         self.min_autopublish_spacing_minutes = min_autopublish_spacing_minutes
         self.dry_run = dry_run
+        self.excluded_authors = self._normalize_author_names(excluded_authors or [])
         self._publish_cursor: Optional[datetime] = None
 
     def run_once(self) -> dict:
@@ -71,6 +74,24 @@ class PipelineService:
                     logger.info(
                         "article already processed",
                         extra={"event": "skip_duplicate", "article_id": article_id, "run_id": run_id},
+                    )
+                    continue
+
+                if self._author_is_excluded(entry.get("author")):
+                    self.repository.mark_processed(
+                        article_id=article_id,
+                        url=entry["url"],
+                        title=entry["title"],
+                        published_at=entry.get("published_at"),
+                    )
+                    logger.info(
+                        "article skipped for excluded author",
+                        extra={
+                            "event": "skip_excluded_author",
+                            "article_id": article_id,
+                            "run_id": run_id,
+                            "author": entry.get("author"),
+                        },
                     )
                     continue
 
@@ -186,6 +207,19 @@ class PipelineService:
         article_text = self.extractor.fetch_article_text(url, rss_content=feed_content)
         clean_text = self.cleaner.clean(article_text)
         return clean_text
+
+    @staticmethod
+    def _normalize_author_names(names: list[str]) -> list[str]:
+        return [re.sub(r"\s+", " ", name).strip().casefold() for name in names if name and name.strip()]
+
+    def _author_is_excluded(self, author: Optional[str]) -> bool:
+        if not author or not self.excluded_authors:
+            return False
+        normalized = re.sub(r"\s+", " ", author).strip().casefold()
+        return any(
+            re.search(rf"(^|[^a-z]){re.escape(name)}([^a-z]|$)", normalized) is not None
+            for name in self.excluded_authors
+        )
 
     def _allow_thread_for_article(self, clean_text: str, insights: list[str]) -> bool:
         if not self.enable_thread_generation:

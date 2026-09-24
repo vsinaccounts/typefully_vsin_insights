@@ -51,6 +51,7 @@ def build_pipeline() -> PipelineService:
         min_chars_for_thread=settings.min_chars_for_thread,
         min_autopublish_spacing_minutes=settings.min_autopublish_spacing_minutes,
         dry_run=settings.dry_run,
+        excluded_authors=[name.strip() for name in settings.excluded_authors.split(",") if name.strip()],
     )
 
 
